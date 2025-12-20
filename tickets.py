@@ -9,66 +9,25 @@ Sistema simples para gerenciamento de tickets de suporte.
 Permite criar, listar, buscar e alterar status de tickets com validações completas.
 Autores:
 Ed Hungria
-[Emerson]
-[Paulo]
-[Alex]
+Emerson
+Paulo
+Alex
 Disciplina: Engenharia de Software II
 """
 
 from datetime import datetime
-from config import USUARIOS, STATUS_VALIDOS
+from config import USUARIOS, STATUS_VALIDOS, MAX_TENTATIVAS_DATA
 
-# Base de dados em memória
+# Base de dados em memória (não persistida entre execuções)
 tickets = []
+# Contador global para IDs sequenciais (inicia em 1)
 contador_id = 1
 
 
-def validar_data(data: str) -> bool:
-    """
-    Valida se a string 'data' está no formato DD/MM/AAAA e representa uma data válida,
-    não futura e com ano a partir de 2000.
-    
-    Imprime mensagens de erro específicas e retorna True apenas se válida.
-    """
-    data = data.strip()
-    
-    # Verificações básicas de formato
-    if len(data) != 10:
-        print("✗ Erro: A data deve ter exatamente 10 caracteres (DD/MM/AAAA).")
-        return False
-    
-    if data[2] != '/' or data[5] != '/':
-        print("✗ Erro: A data deve usar '/' como separador (ex: 18/12/2025).")
-        return False
-    
-    try:
-        dia, mes, ano = map(int, data.split('/'))
-    except ValueError:
-        print("✗ Erro: Dia, mês e ano devem ser números.")
-        return False
-    
-    # Validação com datetime
-    try:
-        data_obj = datetime(ano, mes, dia)
-    except ValueError:
-        print("✗ Erro: Data inválida! Verifique dia/mês (ex: 31/04 não existe).")
-        return False
-    
-    # Rejeita datas futuras
-    if data_obj.date() > datetime.now().date():
-        print("✗ Erro: Data não pode ser futura.")
-        return False
-    
-    # Rejeita anos muito antigos
-    if ano < 2000:
-        print("✗ Erro: Ano deve ser 2000 ou posterior.")
-        return False
-    
-    return True
-
-
 def menu_principal():
-    """Exibe o menu principal do sistema"""
+    """
+    Exibe o menu principal do sistema com as opções disponíveis.
+    """
     print("\n" + "="*50)
     print("       SIGTICKET - Sistema de Tickets")
     print("="*50)
@@ -83,88 +42,133 @@ def menu_principal():
 def validar_data(data_str):
     """
     Valida se uma string representa uma data válida no formato DD/MM/AAAA.
-    
+
     Args:
         data_str (str): String contendo a data a ser validada
-    
+
     Returns:
         tuple: (bool, str) onde:
             - bool: True se válida, False se inválida
             - str: Data formatada se válida, mensagem de erro se inválida
+
+    Examples:
+        >>> validar_data("15/12/2025")
+        (True, "15/12/2025")
+        >>> validar_data("32/13/2025")
+        (False, "Data inválida")
     """
+    # Remove espaços extras
     data_str = data_str.strip()
+
+    # Verifica formato básico (10 caracteres com barras nas posições corretas)
     if len(data_str) != 10 or data_str[2] != '/' or data_str[5] != '/':
         return False, "Use formato DD/MM/AAAA"
+
     try:
+        # Converte string para objeto datetime
         data_obj = datetime.strptime(data_str, "%d/%m/%Y")
+
+        # Regra de negócio: não aceita datas futuras
         if data_obj > datetime.now():
             return False, "Data não pode ser futura"
+
+        # Regra de negócio: não aceita datas antes de 2000
         if data_obj.year < 2000:
             return False, "Ano deve ser >= 2000"
+
+        # Data válida
         return True, data_str
     except ValueError:
+        # Erro ao converter (ex: 32/13/2025 ou mês inválido)
         return False, "Data inválida"
 
 
 def criar_ticket():
     """
-    Cria um novo ticket com validação completa dos campos.
-    Validações: título, descrição, usuário obrigatórios; data válida com até 3 tentativas.
+    Cria um novo ticket no sistema com validação completa dos dados.
+
+    Validações realizadas:
+    - Título não pode estar vazio
+    - Descrição não pode estar vazia
+    - Usuário não pode estar vazio
+    - Data deve ser válida no formato DD/MM/AAAA
+    - Data não pode ser futura
+    - Data não pode ser antes de 2000
+
+    O usuário tem MAX_TENTATIVAS_DATA tentativas para informar uma data válida.
+
+    Returns:
+        None: Modifica a lista global 'tickets'
     """
     print("\n=== CRIAR TICKET ===")
+
+    # Coleta e valida título
     titulo = input("Título: ").strip()
     if not titulo:
         print("✗ Título obrigatório")
         return
+
+    # Coleta e valida descrição
     descricao = input("Descrição: ").strip()
     if not descricao:
         print("✗ Descrição obrigatória")
         return
+
+    # Coleta e valida usuário solicitante
     usuario = input("Usuário: ").strip()
     if not usuario:
         print("✗ Usuário obrigatório")
         return
-    
-    # Validação de data com 3 tentativas
-    for tentativa in range(3):
+
+    # Validação de data com múltiplas tentativas
+    for tentativa in range(MAX_TENTATIVAS_DATA):
         data = input("Data (DD/MM/AAAA): ").strip()
         valida, msg = validar_data(data)
         if valida:
-            data = msg
+            data = msg  # msg contém a data quando válida
             break
         else:
             print(f"✗ {msg}")
-        if tentativa < 2:
-            print(f" Tentativas restantes: {2 - tentativa}")
+        if tentativa < MAX_TENTATIVAS_DATA - 1:
+            print(f" Tentativas restantes: {MAX_TENTATIVAS_DATA - tentativa - 1}")
     else:
         print("✗ Máximo de tentativas. Operação cancelada.")
         return
-    
+
+    # Cria o dicionário do ticket com ID sequencial
     novo_ticket = {
         "id": len(tickets) + 1,
         "titulo": titulo,
         "descricao": descricao,
         "usuario": usuario,
         "data": data,
-        "status": "aberto"
+        "status": "aberto"  # Todo ticket inicia como aberto
     }
+
+    # Adiciona à base em memória
     tickets.append(novo_ticket)
-    print(f"✓ Ticket #{novo_ticket['id']} criado!")
+
+    # Feedback ao usuário
+    print(f"✓ Ticket #{novo_ticket['id']} criado com sucesso!")
 
 
 def listar_tickets():
-    """Lista todos os tickets cadastrados em formato tabular"""
+    """
+    Lista todos os tickets cadastrados em formato tabular.
+
+    Se não houver tickets, exibe mensagem informativa.
+    """
     if not tickets:
         print("\nNenhum ticket cadastrado ainda.")
         return
-    
+
     print("\n" + "="*80)
     print(f"{'ID':<5} {'Título':<30} {'Status':<15} {'Data':<12}")
     print("="*80)
-    
+
     for t in tickets:
         print(f"{t['id']:<5} {t['titulo']:<30} {t['status']:<15} {t['data']:<12}")
-    
+
     print("="*80)
     print(f"Total: {len(tickets)} ticket(s)")
 
@@ -172,36 +176,47 @@ def listar_tickets():
 def mudar_status():
     """
     Altera o status de um ticket existente com validação completa.
-    Exibe lista de status válidos e rejeita entradas inválidas.
+
+    Validações:
+    - ID deve ser numérico e existir
+    - Status deve estar na lista STATUS_VALIDOS (config.py)
     """
     listar_tickets()
-    
+
     try:
         ticket_id = int(input("\nID do ticket: "))
     except ValueError:
         print("✗ ID inválido")
         return
-    
+
+    # Exibe status válidos para auxiliar o usuário
     print("\nStatus válidos:")
     for s in STATUS_VALIDOS:
         print(f" - {s}")
-    
+
     novo_status = input("\nNovo status: ").strip().lower()
+
     if novo_status not in STATUS_VALIDOS:
         print(f"✗ Status inválido! Use: {', '.join(STATUS_VALIDOS)}")
         return
-    
+
+    # Busca e atualiza o ticket
     for t in tickets:
         if t["id"] == ticket_id:
             t["status"] = novo_status
             print(f"✓ Status alterado para: {novo_status}")
             return
-    
+
     print("✗ Ticket não encontrado")
 
 
 def buscar_ticket(ticket_id):
-    """Busca e exibe detalhes completos de um ticket específico pelo ID"""
+    """
+    Busca e exibe detalhes completos de um ticket específico pelo ID.
+
+    Args:
+        ticket_id (int): ID do ticket a ser buscado
+    """
     for t in tickets:
         if t["id"] == ticket_id:
             print("\n" + "="*50)
@@ -214,21 +229,22 @@ def buscar_ticket(ticket_id):
             print(f"Status:      {t['status']}")
             print("="*50)
             return t
-    
+
     print(f"\n✗ Ticket #{ticket_id} não encontrado.")
     return None
 
 
 def fazer_login():
     """
-    Realiza autenticação do usuário usando credenciais do config.py.
-    
+    Realiza autenticação do usuário usando credenciais centralizadas em config.py.
+
     Returns:
-        bool: True se login bem-sucedido, False caso contrário
+        bool: True se autenticação bem-sucedida, False caso contrário
     """
     print("\n=== LOGIN ===")
-    usuario = input("Usuário: ")
-    senha = input("Senha: ")
+    usuario = input("Usuário: ").strip()
+    senha = input("Senha: ").strip()
+
     if usuario in USUARIOS and USUARIOS.get(usuario) == senha:
         print(f"✓ Login realizado: {usuario}")
         return True
@@ -238,19 +254,21 @@ def fazer_login():
 
 
 def main():
-    """Função principal que controla o fluxo de execução do sistema"""
+    """
+    Função principal que controla o fluxo completo do sistema.
+    """
     print("\n🎫 Bem-vindo ao SigTicket!")
-    
+
     if not fazer_login():
         print("Acesso negado. Encerrando...")
         return
-    
+
     while True:
         menu_principal()
-        
+
         try:
             opcao = input("\nEscolha uma opção: ")
-            
+
             if opcao == "1":
                 criar_ticket()
             elif opcao == "2":
@@ -268,7 +286,7 @@ def main():
                 break
             else:
                 print("\n✗ Opção inválida!")
-        
+
         except KeyboardInterrupt:
             print("\n\nSistema interrompido pelo usuário.")
             break
@@ -277,7 +295,9 @@ def main():
 
 
 def carregar_dados_teste():
-    """Carrega tickets de exemplo com problemas intencionais (para testes)"""
+    """
+    Carrega tickets de exemplo com problemas intencionais para demonstração de bugs.
+    """
     global contador_id
     tickets.extend([
         {
@@ -293,16 +313,16 @@ def carregar_dados_teste():
             "titulo": "Senha esquecida",
             "descricao": "Usuário não consegue acessar o sistema",
             "usuario": "maria.santos",
-            "data": "32/13/2025",
-            "status": "em analise"
+            "data": "32/13/2025",  # Data inválida intencional
+            "status": "em analise"  # Status não padronizado
         },
         {
             "id": 3,
             "titulo": "Computador lento",
             "descricao": "Máquina travando constantemente",
             "usuario": "pedro.costa",
-            "data": "abc/def/ghij",
-            "status": "xpto"
+            "data": "abc/def/ghij",  # Formato inválido
+            "status": "xpto"  # Status absurdo
         }
     ])
     contador_id = 4
@@ -310,6 +330,6 @@ def carregar_dados_teste():
 
 
 if __name__ == "__main__":
-    # Descomente para carregar dados de teste
-    carregar_dados_teste()
+    # Descomente para carregar dados de teste automaticamente
+    # carregar_dados_teste()
     main()
